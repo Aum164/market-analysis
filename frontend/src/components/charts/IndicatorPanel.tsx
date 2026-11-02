@@ -18,7 +18,7 @@ export default function IndicatorPanel() {
   const ind = INDICATORS.find(i => i.type === active)!
   const { data } = useQuery({
     queryKey: ['indicator', selectedSymbol, active, ind.period],
-    queryFn: () => api.indicator(selectedSymbol, active, ind.period),
+    queryFn: () => api.indicator(selectedSymbol, active, ind.period, '5m'),
     refetchInterval: 15000
   })
   const latest = data?.values?.slice(-1)[0]

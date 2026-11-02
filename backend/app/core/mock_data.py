@@ -87,7 +87,7 @@ def generate_ohlcv(symbol: str, interval: str = "5m", from_ts: int = 0, to_ts: i
 
     while ts < to_ts:
         open_ = price
-        change = rng.gauss(0, sigma)
+        change = rng.gauss(0.00005, sigma)  # slight upward bias so RSI stays plausible near highs
         close = open_ * (1 + change)
         high = max(open_, close) * (1 + abs(rng.gauss(0, sigma * 0.4)))
         low = min(open_, close) * (1 - abs(rng.gauss(0, sigma * 0.4)))

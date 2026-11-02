@@ -27,9 +27,12 @@ async def get_ohlc(
 async def get_indicator(
     symbol: str,
     type: str = Query("rsi"),
-    period: int = Query(14)
+    period: int = Query(14),
+    interval: str = Query("5m")
 ):
-    ohlcv = generate_ohlcv(symbol.upper(), "1D", int(time.time()) - 86400 * 365, int(time.time()))
+    # Use same 5-day 5m window as the predict endpoint so RSI/MACD match Dashboard
+    now = int(time.time())
+    ohlcv = generate_ohlcv(symbol.upper(), interval, now - 86400 * 5, now)
     return compute_indicator(symbol.upper(), type, period, ohlcv)
 
 @router.websocket("/ws/market/{symbol}")
