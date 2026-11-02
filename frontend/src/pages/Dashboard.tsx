@@ -9,7 +9,7 @@ export default function Dashboard() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Market Dashboard — {selectedSymbol}</h1>
-        <span className="text-xs text-gray-400">Live data • NSE</span>
+        <span className="text-xs text-gray-400">Demo data • Simulated</span>
       </div>
       <MarketOverview />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
