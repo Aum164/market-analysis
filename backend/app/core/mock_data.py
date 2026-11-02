@@ -28,12 +28,19 @@ def _get_seeded_current_price(symbol: str) -> float:
     return base * (1 + drift)
 
 def generate_quote(symbol: str) -> Dict[str, Any]:
-    current = _get_seeded_current_price(symbol)
-    # Small intra-day noise around the seeded current price
-    ltp = current * (1 + random.uniform(-0.003, 0.003))
-    open_ = current * (1 + random.uniform(-0.002, 0.002))
-    high = max(ltp, open_) * (1 + random.uniform(0, 0.003))
-    low = min(ltp, open_) * (1 - random.uniform(0, 0.003))
+    # Use the last candle of the 5m OHLCV series as the single source of truth.
+    # This guarantees the quote card and the chart always show the same last price.
+    now = int(time.time())
+    candles = generate_ohlcv(symbol, "5m", now - 86400, now)
+    if candles:
+        last = candles[-1]
+        ltp = last["close"]
+        open_ = candles[0]["open"] if candles else ltp
+        high = max(c["high"] for c in candles)
+        low = min(c["low"] for c in candles)
+    else:
+        ltp = _get_seeded_current_price(symbol)
+        open_ = high = low = ltp
     base = get_base_price(symbol)
     change = ltp - base
     return {
@@ -42,7 +49,7 @@ def generate_quote(symbol: str) -> Dict[str, Any]:
         "open": round(open_, 2),
         "high": round(high, 2),
         "low": round(low, 2),
-        "close": round(current, 2),
+        "close": round(ltp, 2),
         "change": round(change, 2),
         "change_pct": round((change / base) * 100, 2),
         "volume": random.randint(100000, 5000000),
@@ -216,15 +223,55 @@ def _derive_direction_and_rationale(symbol: str, features: Dict) -> tuple:
     rationale = f"{symbol}: " + ". ".join(parts) + "."
     return direction, round(confidence, 3), rationale
 
+def _compute_rsi_from_closes(closes: List[float], period: int = 14) -> float:
+    """Compute RSI from a list of close prices."""
+    if len(closes) < period + 1:
+        return 50.0
+    gains, losses = [], []
+    for i in range(1, period + 1):
+        diff = closes[-period - 1 + i] - closes[-period - 2 + i]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains) / period
+    avg_loss = sum(losses) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 1)
+
+def _compute_macd_from_closes(closes: List[float]) -> float:
+    """Compute MACD line (EMA12 - EMA26) from a list of close prices."""
+    if len(closes) < 26:
+        return 0.0
+    k12, k26 = 2 / 13, 2 / 27
+    ema12 = sum(closes[:12]) / 12
+    ema26 = sum(closes[:26]) / 26
+    for price in closes[12:]:
+        ema12 = price * k12 + ema12 * (1 - k12)
+    for price in closes[26:]:
+        ema26 = price * k26 + ema26 * (1 - k26)
+    return round(ema12 - ema26, 2)
+
 def generate_prediction(symbol: str) -> Dict[str, Any]:
+    # Compute RSI and MACD from the same 5m OHLCV candles shown on the chart
+    now = int(time.time())
+    candles = generate_ohlcv(symbol, "5m", now - 86400 * 5, now)
+    closes = [c["close"] for c in candles] if candles else []
+
+    rsi_14 = _compute_rsi_from_closes(closes) if len(closes) >= 15 else round(random.uniform(40, 60), 1)
+    macd_signal = _compute_macd_from_closes(closes) if len(closes) >= 26 else 0.0
+
+    # Seed-stable values for non-technical features (change daily not per-call)
+    day_seed = int(datetime.utcnow().strftime("%Y%m%d") + str(abs(hash(symbol)) % 1000))
+    rng = random.Random(day_seed)
     features = {
-        "rsi_14": round(random.uniform(30, 75), 1),
-        "macd_signal": round(random.uniform(-50, 50), 2),
-        "pcr": round(random.uniform(0.8, 1.5), 2),
-        "fii_net_cr": round(random.uniform(-3000, 3000), 0),
-        "news_sentiment": round(random.uniform(-1, 1), 2),
-        "vix": round(random.uniform(12, 22), 1),
-        "gift_nifty_pct": round(random.uniform(-0.5, 0.5), 2),
+        "rsi_14": rsi_14,
+        "macd_signal": macd_signal,
+        "pcr": round(rng.uniform(0.8, 1.5), 2),
+        "fii_net_cr": round(rng.uniform(-3000, 3000), 0),
+        "news_sentiment": round(rng.uniform(-1, 1), 2),
+        "vix": round(rng.uniform(12, 22), 1),
+        "gift_nifty_pct": round(rng.uniform(-0.5, 0.5), 2),
     }
 
     direction, confidence, rationale = _derive_direction_and_rationale(symbol, features)
